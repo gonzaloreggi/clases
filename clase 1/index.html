@@ -7,15 +7,25 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h2>¡Hola Mundo!</h2>
-    <p>Esta es mi primera página web.</p>
-    <button onclick="cambiarTexto()">Haz clic aquí</button>
-    <p id="mensaje"></p>
+    <nav class="navbar">
+        <span class="logo">📚 Estudio Reggi</span>
+        <ul class="nav-links">
+            <li><a href="#inicio">Inicio</a></li>
+            <li><a href="#calculadora">Calculadora</a></li>
+        </ul>
+    </nav>
 
-    <hr>
-    
-    <h2>Calculadora</h2>
-    <div class="calculator-container">
+    <main class="container">
+        <section id="inicio" class="section">
+            <h1>¡Hola Mundo!</h1>
+            <p>Esta es mi primera página web.</p>
+            <button onclick="cambiarTexto()">Haz clic aquí</button>
+            <p id="mensaje"></p>
+        </section>
+
+        <section id="calculadora" class="section">
+            <h2>🧮 Calculadora</h2>
+            <div class="calculator-container">
         <input type="text" id="display" readonly>
         <div class="calculator-buttons">
             <button onclick="clearDisplay()" class="btn-clear">C</button>
@@ -42,6 +52,8 @@
             <button onclick="calculate()" class="btn-equals">=</button>
         </div>
     </div>
+        </section>
+    </main>
 
     <script src="script.js"></script>
 </body>

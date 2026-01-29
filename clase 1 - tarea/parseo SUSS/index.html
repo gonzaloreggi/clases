@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parseo SUSS - CSV a TXT</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main class="container">
+        <h1>Parseo SUSS</h1>
+        <p class="subtitle">Sube un archivo CSV y obtén un TXT con el formato definido.</p>
+
+        <section class="card">
+            <h2>1. Subir CSV</h2>
+            <label class="file-label">
+                <input type="file" id="csv-input" accept=".csv,text/csv" />
+                <span class="file-button">Elegir archivo CSV</span>
+                <span id="file-name" class="file-name">Ningún archivo elegido</span>
+            </label>
+        </section>
+
+        <section class="card">
+            <h2>2. Vista previa del CSV</h2>
+            <p id="csv-info" class="info">Sube un archivo para ver la vista previa.</p>
+            <div id="csv-preview" class="preview"></div>
+        </section>
+
+        <section class="card">
+            <h2>3. Generar y descargar TXT</h2>
+            <p id="output-info" class="info">El archivo TXT se generará con el formato que definamos.</p>
+            <button type="button" id="btn-generate" class="btn primary" disabled>Generar archivo TXT</button>
+        </section>
+
+        <section class="card">
+            <h2>Vista previa del TXT (formato de salida)</h2>
+            <pre id="txt-preview" class="txt-preview">— Aquí se mostrará cómo quedará el TXT generado —</pre>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

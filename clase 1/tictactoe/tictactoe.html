@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic Tac Toe - Clase 1</title>
+    <link rel="stylesheet" href="tictactoe.css">
+</head>
+<body>
+    <nav class="navbar">
+        <span class="logo">📚 Estudio Reggi</span>
+        <ul class="nav-links">
+            <li><a href="../index/index.html">Inicio</a></li>
+            <li><a href="../calculator/calculator.html">Calculadora</a></li>
+            <li><a href="tictactoe.html">Tic Tac Toe</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        <section id="tictactoe" class="section">
+            <h2>⭕ Tic Tac Toe</h2>
+            <div class="game-info">
+                <p id="game-status">Turno de: <span id="current-player">X</span></p>
+                <button onclick="resetGame()" class="btn-reset">Nuevo Juego</button>
+            </div>
+            <div class="tic-tac-toe-container">
+                <div class="board">
+                    <div class="cell" onclick="makeMove(0)"></div>
+                    <div class="cell" onclick="makeMove(1)"></div>
+                    <div class="cell" onclick="makeMove(2)"></div>
+                    <div class="cell" onclick="makeMove(3)"></div>
+                    <div class="cell" onclick="makeMove(4)"></div>
+                    <div class="cell" onclick="makeMove(5)"></div>
+                    <div class="cell" onclick="makeMove(6)"></div>
+                    <div class="cell" onclick="makeMove(7)"></div>
+                    <div class="cell" onclick="makeMove(8)"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="tictactoe.js"></script>
+</body>
+</html>
+

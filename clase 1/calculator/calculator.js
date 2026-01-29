@@ -5,7 +5,10 @@ let previousInput = '';
 
 // Funciones de la calculadora
 function updateDisplay() {
-    document.getElementById('display').value = currentInput || '0';
+    const display = document.getElementById('display');
+    if (display) {
+        display.value = currentInput || '0';
+    }
 }
 
 function appendNumber(number) {
@@ -19,13 +22,13 @@ function appendOperator(op) {
         updateDisplay();
         return;
     }
-    
+
     if (currentInput === '') return;
-    
+
     if (previousInput !== '' && operator !== '') {
         calculate();
     }
-    
+
     previousInput = currentInput;
     operator = op;
     currentInput = '';
@@ -49,7 +52,6 @@ function calculate() {
             break;
         case '*':
             result = prev * current;
-            // Console log para multiplicación
             console.log(`🔢 Multiplicación realizada: ${prev} × ${current} = ${result}`);
             break;
         case '/':
@@ -82,25 +84,9 @@ function deleteLast() {
     updateDisplay();
 }
 
-// Función que cambia el texto cuando haces clic en el botón
-function cambiarTexto() {
-    const mensaje = document.getElementById('mensaje');
-    mensaje.textContent = '¡JavaScript funciona! Has hecho clic en el botón.';
-    mensaje.style.color = 'blue';
-    mensaje.style.fontWeight = 'bold';
-    console.log('¡JavaScript funciona! Has hecho clic en el botón.');
-}
-
-// Inicialización cuando la página carga
+// Inicialización cuando la página de la calculadora carga
 document.addEventListener('DOMContentLoaded', function() {
-    // Mensaje en la consola cuando la página carga
-    console.log('¡La página se ha cargado correctamente!');
-    
-    // Inicializar display de la calculadora
+    console.log('¡La página de la calculadora se ha cargado correctamente!');
     updateDisplay();
-    
-    // Mostrar mensaje cuando todo está listo
-    window.addEventListener('load', function() {
-        console.log('Todo está listo para usar JavaScript');
-    });
 });
+

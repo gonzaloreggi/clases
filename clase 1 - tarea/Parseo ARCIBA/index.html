@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parseo ARCIBA - CSV a TXT</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main class="container">
+        <a href="../index.html" class="back-link">← Volver a Herramientas de parseo</a>
+        <header class="page-header">
+            <a href="../index.html" class="logo-link"><img src="../LOGO.jpeg" alt="Logo" class="page-logo" /></a>
+            <div class="page-title-wrap">
+                <h1>Parseo ARCIBA</h1>
+                <p class="subtitle">Sube el consolidado CSV (Arciba) y obtené el TXT para retenciones AGIP.</p>
+            </div>
+        </header>
+
+        <section class="card">
+            <h2>1. Subir CSV</h2>
+            <label class="file-label">
+                <input type="file" id="csv-input" accept=".csv,text/csv" />
+                <span class="file-button">Elegir archivo CSV</span>
+                <span id="file-name" class="file-name">Ningún archivo elegido</span>
+            </label>
+        </section>
+
+        <section class="card">
+            <h2>2. Vista previa del CSV</h2>
+            <p id="csv-info" class="info">Sube un archivo para ver la vista previa.</p>
+            <div id="csv-preview" class="preview"></div>
+        </section>
+
+        <section class="card">
+            <h2>3. Generar y descargar TXT</h2>
+            <p id="output-info" class="info">El archivo TXT se generará con el formato AGIP (retenciones).</p>
+            <button type="button" id="btn-generate" class="btn primary" disabled>Generar archivo TXT</button>
+        </section>
+
+        <section class="card">
+            <h2>Vista previa del TXT (formato de salida)</h2>
+            <pre id="txt-preview" class="txt-preview">— Aquí se mostrará cómo quedará el TXT generado —</pre>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

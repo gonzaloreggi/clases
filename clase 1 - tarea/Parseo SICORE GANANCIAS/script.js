@@ -144,14 +144,14 @@ function csvToTxtContent() {
             cuit20 +                                 // 112-131 Número documento (20)
             certificado                              // 132-159 Número certificado original (28: 18 ceros + aammnn)
         );
-        const expectedLen = 159;
+        const expectedLen = 159; // Si el sistema exige 145, habría que acortar certificado a 14 chars
         if (line.length !== expectedLen) {
             console.warn('Línea con longitud incorrecta:', line.length, 'esperado', expectedLen);
         }
         lines.push(line);
         lineNum++;
     }
-    return lines.join('\n') + '\n';
+    return lines.join('\r\n') + '\r\n';
 }
 
 function updateTxtPreview() {

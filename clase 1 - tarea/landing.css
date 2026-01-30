@@ -104,6 +104,10 @@ body {
     border-left: 4px solid #5c7c5c;
 }
 
+.card-sicore {
+    border-left: 4px solid #6b8e6b;
+}
+
 @media (max-width: 560px) {
     .header {
         flex-direction: column;

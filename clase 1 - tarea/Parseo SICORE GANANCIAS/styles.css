@@ -1,0 +1,187 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, sans-serif;
+    min-height: 100vh;
+    background: linear-gradient(160deg, #2d6a4f 0%, #1b4332 40%, #1b4332 60%, #40916c 100%);
+    color: #1b4332;
+    padding: 2rem 1rem;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.back-link {
+    display: inline-block;
+    margin-bottom: 1.25rem;
+    color: rgba(255, 255, 255, 0.95);
+    text-decoration: none;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.back-link:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.page-header {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.logo-link {
+    flex-shrink: 0;
+}
+
+.page-logo {
+    display: block;
+    max-width: 180px;
+    max-height: 180px;
+    width: auto;
+    height: auto;
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+.page-title-wrap .subtitle {
+    margin-bottom: 0;
+}
+
+h1 {
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
+    color: #f1f1f1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.subtitle {
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 2rem;
+    font-size: 0.95rem;
+}
+
+.card {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(192, 192, 192, 0.6);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.card h2 {
+    font-size: 1.1rem;
+    color: #1b4332;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.info {
+    color: #495057;
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+}
+
+.file-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.file-label input[type="file"] {
+    position: absolute;
+    width: 0.1px;
+    height: 0.1px;
+    opacity: 0;
+    overflow: hidden;
+    z-index: -1;
+}
+
+.file-button {
+    display: inline-block;
+    padding: 0.6rem 1.2rem;
+    background: #40916c;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+}
+
+.file-button:hover {
+    background: #2d6a4f;
+}
+
+.file-name {
+    color: #495057;
+    font-size: 0.9rem;
+}
+
+.preview {
+    max-height: 200px;
+    overflow: auto;
+    background: rgba(224, 224, 224, 0.5);
+    border: 1px solid rgba(192, 192, 192, 0.5);
+    border-radius: 8px;
+    padding: 0.75rem;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #1b4332;
+}
+
+.txt-preview {
+    max-height: 300px;
+    overflow: auto;
+    background: rgba(224, 224, 224, 0.5);
+    border: 1px solid rgba(192, 192, 192, 0.5);
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    color: #1b4332;
+}
+
+.btn {
+    padding: 0.6rem 1.25rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.btn.primary {
+    background: #40916c;
+    color: white;
+}
+
+.btn.primary:hover:not(:disabled) {
+    background: #2d6a4f;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+    .page-header {
+        flex-direction: column;
+        text-align: center;
+    }
+}

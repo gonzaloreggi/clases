@@ -1,0 +1,66 @@
+.tictactoe-page {
+  padding: 2rem 0;
+}
+
+.tictactoe-page h1 {
+  margin-bottom: 0.5rem;
+  font-size: 2rem;
+}
+
+.tictactoe-status {
+  margin-bottom: 1.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #89b4fa;
+}
+
+.tictactoe-board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  width: min(280px, 90vw);
+  margin: 0 auto 1.5rem;
+  aspect-ratio: 1;
+}
+
+.tictactoe-square {
+  font-size: 2.5rem;
+  font-weight: 700;
+  border: 2px solid #45475a;
+  border-radius: 12px;
+  background: #313244;
+  color: #cdd6f4;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.05s, border-color 0.15s;
+}
+
+.tictactoe-square:hover:not(:disabled) {
+  background: #45475a;
+  border-color: #89b4fa;
+}
+
+.tictactoe-square:active {
+  transform: scale(0.97);
+}
+
+.tictactoe-square--winner {
+  background: #a6e3a1;
+  color: #1e1e2e;
+  border-color: #94e2d5;
+}
+
+.tictactoe-reset {
+  padding: 0.6rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  background: #89b4fa;
+  color: #1e1e2e;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tictactoe-reset:hover {
+  background: #b4befe;
+}

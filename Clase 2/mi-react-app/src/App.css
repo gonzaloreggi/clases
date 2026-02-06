@@ -1,0 +1,147 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.app-nav {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #313244;
+}
+
+.app-nav a {
+  color: #89b4fa;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.app-nav a:hover {
+  color: #b4befe;
+  text-decoration: underline;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* Calculator */
+.calculator-section {
+  margin: 2rem 0;
+}
+
+.calculator-section h2 {
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.calculator {
+  display: inline-block;
+  padding: 1rem;
+  background: #1e1e2e;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.calculator-display {
+  min-height: 3rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: #111;
+  border-radius: 8px;
+  font-size: 1.75rem;
+  font-family: ui-monospace, monospace;
+  text-align: right;
+  overflow-x: auto;
+}
+
+.calculator-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.calc-btn {
+  min-width: 3.5rem;
+  min-height: 3.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #313244;
+  color: #cdd6f4;
+  transition: background 0.15s, transform 0.05s;
+}
+
+.calc-btn:hover {
+  background: #45475a;
+}
+
+.calc-btn:active {
+  transform: scale(0.96);
+}
+
+.calc-op {
+  background: #89b4fa;
+  color: #1e1e2e;
+}
+
+.calc-op:hover {
+  background: #b4befe;
+}
+
+.calc-clear {
+  background: #f38ba8;
+  color: #1e1e2e;
+}
+
+.calc-clear:hover {
+  background: #fab387;
+}
+
+.calc-equals {
+  background: #a6e3a1;
+  color: #1e1e2e;
+  grid-row: span 2;
+}
+
+.calc-equals:hover {
+  background: #94e2d5;
+}

@@ -10,7 +10,7 @@ export type TransformFn = (
   headers: string[],
   rows: unknown[][],
   xlsxLib?: XLSXModule | null
-) => string;
+) => string | Promise<string>;
 
 export interface ParseoConfig {
   /** Page title, e.g. "Parseo SUSS" */
@@ -50,8 +50,15 @@ export default function ParseoPageLayout({ config }: { config: ParseoConfig }) {
   // Update output preview whenever data changes
   useEffect(() => {
     if (dataRows.length === 0) return;
-    const content = config.transform(headers, dataRows, xlsxLib);
-    setOutputPreview(content.slice(0, 2000) + (content.length > 2000 ? "\n..." : ""));
+    let cancelled = false;
+    const run = async () => {
+      const content = await Promise.resolve(config.transform(headers, dataRows, xlsxLib));
+      if (!cancelled) {
+        setOutputPreview(content.slice(0, 2000) + (content.length > 2000 ? "\n..." : ""));
+      }
+    };
+    run();
+    return () => { cancelled = true; };
   }, [headers, dataRows, xlsxLib, config]);
 
   const resetState = () => {
@@ -155,8 +162,8 @@ export default function ParseoPageLayout({ config }: { config: ParseoConfig }) {
     }
   };
 
-  const handleGenerate = () => {
-    const content = config.transform(headers, dataRows, xlsxLib);
+  const handleGenerate = async () => {
+    const content = await Promise.resolve(config.transform(headers, dataRows, xlsxLib));
     if (!content) return;
 
     // Strip BOM if present

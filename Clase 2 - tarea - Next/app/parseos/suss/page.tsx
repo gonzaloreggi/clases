@@ -1,23 +1,20 @@
 "use client";
 
 import ParseoPageLayout, { type ParseoConfig } from "@/components/ParseoPageLayout";
-import { parseAmount } from "@/lib/parseoUtils";
 
-const AMOUNT_WIDTH = 15;
+async function sussTransform(headers: string[], rows: unknown[][]): Promise<string> {
+  const response = await fetch("/api/parseos/suss", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ headers, rows }),
+  });
 
-function sussTransform(_headers: string[], rows: unknown[][]): string {
-  if (rows.length === 0) return "";
-  return rows
-    .map((row) => {
-      const cuit = String(row[0] ?? "").trim();
-      const fecha = String(row[5] ?? "").trim();
-      const numeroCert = String(row[4] ?? "").trim();
-      const importeNum = parseAmount(row[6]);
-      const importeFormatted = importeNum.toFixed(2);
-      const importePadded = importeFormatted.padStart(AMOUNT_WIDTH, " ");
-      return cuit + fecha + numeroCert + importePadded;
-    })
-    .join("\n");
+  if (!response.ok) {
+    throw new Error("Error al procesar los datos");
+  }
+
+  const data = await response.json();
+  return data.result;
 }
 
 const config: ParseoConfig = {

@@ -1,6 +1,7 @@
 "use client";
 
 import ParseoPageLayout, { type ParseoConfig } from "@/components/ParseoPageLayout";
+import { parseAmount } from "@/lib/parseoUtils";
 
 const AMOUNT_WIDTH = 15;
 
@@ -11,8 +12,7 @@ function sussTransform(_headers: string[], rows: unknown[][]): string {
       const cuit = String(row[0] ?? "").trim();
       const fecha = String(row[5] ?? "").trim();
       const numeroCert = String(row[4] ?? "").trim();
-      const importeStr = String(row[6] ?? "0").trim().replace(",", ".");
-      const importeNum = parseFloat(importeStr) || 0;
+      const importeNum = parseAmount(row[6]);
       const importeFormatted = importeNum.toFixed(2);
       const importePadded = importeFormatted.padStart(AMOUNT_WIDTH, " ");
       return cuit + fecha + numeroCert + importePadded;

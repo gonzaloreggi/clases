@@ -36,3 +36,47 @@ export function parseFechaSortable(str: string): number {
   const yyyy = parseInt(parts[2], 10) || 0;
   return yyyy * 10000 + mm * 100 + dd;
 }
+
+/** Sort rows by a date column (dd/mm/yyyy). If colIdx < 0, returns rows unchanged. */
+export function sortRowsByFecha(rows: unknown[][], colIdx: number): unknown[][] {
+  if (colIdx < 0) return rows;
+  return [...rows].sort(
+    (a, b) =>
+      parseFechaSortable(String(a[colIdx] ?? "")) - parseFechaSortable(String(b[colIdx] ?? ""))
+  );
+}
+
+/** Parse numeric value with optional comma as decimal separator. Returns 0 if invalid. */
+export function parseAmount(value: unknown): number {
+  return parseFloat(String(value ?? "0").trim().replace(",", ".")) || 0;
+}
+
+/** Read cell as string. If colIdx < 0 returns fallback (default ""). */
+export function cellStr(row: unknown[], colIdx: number, fallback = ""): string {
+  if (colIdx < 0) return fallback;
+  return String(row[colIdx] ?? "").trim();
+}
+
+/** Read cell and return only digits. */
+export function cellDigits(row: unknown[], colIdx: number): string {
+  return cellStr(row, colIdx).replace(/\D/g, "");
+}
+
+/**
+ * Format number with 2 decimal places, comma as decimal separator.
+ * - For len=16, padChar="0": ARCIBA behavior (13 digits + comma + 2 decimals).
+ * - Otherwise: SICORE behavior (pad or truncate to len with padChar).
+ */
+export function formatNumber(
+  num: number | string,
+  len: number,
+  padChar: "0" | " " = "0"
+): string {
+  const n = parseFloat(String(num).replace(",", ".")) || 0;
+  const [intPart, decPart] = n.toFixed(2).split(".");
+  const s = intPart + "," + (decPart || "00");
+  if (len === 16 && padChar === "0") {
+    return intPart.padStart(13, "0") + "," + (decPart || "00");
+  }
+  return s.length > len ? s.slice(-len) : s.padStart(len, padChar);
+}

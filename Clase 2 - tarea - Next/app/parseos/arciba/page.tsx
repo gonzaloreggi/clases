@@ -1,13 +1,15 @@
 "use client";
 
 import ParseoPageLayout, { type ParseoConfig } from "@/components/ParseoPageLayout";
-import { findCol, normalizeFecha, parseFechaSortable } from "@/lib/parseoUtils";
-
-function formatNum16(num: number | string): string {
-  const n = parseFloat(String(num).replace(",", ".")) || 0;
-  const [intPart, decPart] = n.toFixed(2).split(".");
-  return intPart.padStart(13, "0") + "," + (decPart || "00");
-}
+import {
+  cellDigits,
+  cellStr,
+  findCol,
+  formatNumber,
+  normalizeFecha,
+  parseAmount,
+  sortRowsByFecha,
+} from "@/lib/parseoUtils";
 
 function sanitizeForEarciba(s: string): string {
   const map: Record<string, string> = {
@@ -41,37 +43,29 @@ function padRight(s: string, len: number): string {
 function arcibaTransform(headers: string[], rows: unknown[][]): string {
   if (rows.length === 0 || headers.length === 0) return "";
 
-  const csvHeaders = headers.map((h) => String(h));
   const idx = {
-    fecha: findCol(csvHeaders, "fecha"),
-    num_comp: findCol(csvHeaders, "num_comp"),
-    razon_social: findCol(csvHeaders, "razon_social"),
-    cuit: findCol(csvHeaders, "cuit"),
-    valor: findCol(csvHeaders, "valor"),
-    reten: findCol(csvHeaders, "reten"),
-    alicuota: findCol(csvHeaders, "alicuota"),
+    fecha: findCol(headers, "fecha"),
+    num_comp: findCol(headers, "num_comp"),
+    razon_social: findCol(headers, "razon_social"),
+    cuit: findCol(headers, "cuit"),
+    valor: findCol(headers, "valor"),
+    reten: findCol(headers, "reten"),
+    alicuota: findCol(headers, "alicuota"),
   };
 
-  const sortedRows =
-    idx.fecha >= 0
-      ? [...rows].sort(
-          (a, b) =>
-            parseFechaSortable(String(a[idx.fecha] ?? "")) -
-            parseFechaSortable(String(b[idx.fecha] ?? ""))
-        )
-      : rows;
+  const sortedRows = sortRowsByFecha(rows, idx.fecha);
 
   const lines: string[] = [];
   for (const row of sortedRows) {
-    const fechaRaw = idx.fecha >= 0 ? String(row[idx.fecha] ?? "").trim() : "";
+    const fechaRaw = cellStr(row, idx.fecha);
     const fecha = normalizeFecha(fechaRaw);
-    const num_comp = idx.num_comp >= 0 ? String(row[idx.num_comp] ?? "").trim() : "";
-    const valorNum = parseFloat(String(idx.valor >= 0 ? row[idx.valor] ?? "0" : "0").replace(",", ".")) || 0;
-    const retenNum = parseFloat(String(idx.reten >= 0 ? row[idx.reten] ?? "0" : "0").replace(",", ".")) || 0;
-    const alicuotaNum = parseFloat(String(idx.alicuota >= 0 ? row[idx.alicuota] ?? "0" : "0").replace(",", ".")) || 0;
-    const cuit = idx.cuit >= 0 ? String(row[idx.cuit] ?? "").replace(/\D/g, "") : "";
+    const num_comp = cellStr(row, idx.num_comp);
+    const valorNum = parseAmount(row[idx.valor]);
+    const retenNum = parseAmount(row[idx.reten]);
+    const alicuotaNum = parseAmount(row[idx.alicuota]);
+    const cuit = cellDigits(row, idx.cuit);
     const cuit11 = cuit ? cuit.padStart(11, "0").slice(-11) : "00000000000";
-    let razon = idx.razon_social >= 0 ? String(row[idx.razon_social] ?? "").trim() : "";
+    let razon = cellStr(row, idx.razon_social);
     razon = razon
       .replace(/\s*S\.\s*A\.?/gi, " SA")
       .replace(/\s*S\.\s*R\.\s*L\.?/gi, " SRL")
@@ -80,11 +74,11 @@ function arcibaTransform(headers: string[], rows: unknown[][]): string {
     razon = sanitizeForEarciba(razon);
     const razon30 = padRight(razon, 30);
     const alicuota5 = formatAlicuota5(alicuotaNum);
-    const montoComprobante = formatNum16(valorNum);
-    const importeOtros = formatNum16(0);
-    const importeIva = formatNum16(0);
-    const montoSujeto = formatNum16(valorNum);
-    const retenPracticada = formatNum16(retenNum);
+    const montoComprobante = formatNumber(valorNum, 16, "0");
+    const importeOtros = formatNumber(0, 16, "0");
+    const importeIva = formatNumber(0, 16, "0");
+    const montoSujeto = formatNumber(valorNum, 16, "0");
+    const retenPracticada = formatNumber(retenNum, 16, "0");
     const numComp16 = (num_comp || "").padStart(16, "0").slice(-16);
 
     const line = [

@@ -1,37 +1,29 @@
 "use client";
 
 import ParseoPageLayout, { type ParseoConfig } from "@/components/ParseoPageLayout";
-import { findCol, normalizeFecha, parseFechaSortable } from "@/lib/parseoUtils";
-
-function formatNumFixed(num: number | string, len: number): string {
-  const n = parseFloat(String(num).replace(",", ".")) || 0;
-  const [intPart, decPart] = n.toFixed(2).split(".");
-  let s = intPart + "," + (decPart || "00");
-  s = s.length > len ? s.slice(-len) : s.padStart(len, " ");
-  return s;
-}
+import {
+  cellDigits,
+  cellStr,
+  findCol,
+  formatNumber,
+  normalizeFecha,
+  parseAmount,
+  sortRowsByFecha,
+} from "@/lib/parseoUtils";
 
 function sicoreTransform(headers: string[], rows: unknown[][]): string {
   if (rows.length === 0 || headers.length === 0) return "";
 
-  const csvHeaders = headers.map((h) => String(h));
   const idx = {
-    fecha: findCol(csvHeaders, "fecha"),
-    num_comp: findCol(csvHeaders, "num_comp"),
-    punto_venta: findCol(csvHeaders, "punto_venta"),
-    cuit: findCol(csvHeaders, "cuit"),
-    valor: findCol(csvHeaders, "valor"),
-    reten: findCol(csvHeaders, "reten"),
+    fecha: findCol(headers, "fecha"),
+    num_comp: findCol(headers, "num_comp"),
+    punto_venta: findCol(headers, "punto_venta"),
+    cuit: findCol(headers, "cuit"),
+    valor: findCol(headers, "valor"),
+    reten: findCol(headers, "reten"),
   };
 
-  const sortedRows =
-    idx.fecha >= 0
-      ? [...rows].sort(
-          (a, b) =>
-            parseFechaSortable(String(a[idx.fecha] ?? "")) -
-            parseFechaSortable(String(b[idx.fecha] ?? ""))
-        )
-      : rows;
+  const sortedRows = sortRowsByFecha(rows, idx.fecha);
 
   const lines: string[] = [];
   const firstDate =
@@ -44,14 +36,12 @@ function sicoreTransform(headers: string[], rows: unknown[][]): string {
   let lineNum = 1;
 
   for (const row of sortedRows) {
-    const fecha = normalizeFecha(idx.fecha >= 0 ? String(row[idx.fecha] ?? "") : "");
-    const num_comp = idx.num_comp >= 0 ? String(row[idx.num_comp] ?? "").trim() : "";
-    const punto_venta = idx.punto_venta >= 0 ? String(row[idx.punto_venta] ?? "").trim() : "";
-    const valorNum =
-      parseFloat(String(idx.valor >= 0 ? row[idx.valor] ?? "0" : "0").replace(",", ".")) || 0;
-    const retenNum =
-      parseFloat(String(idx.reten >= 0 ? row[idx.reten] ?? "0" : "0").replace(",", ".")) || 0;
-    const cuit = idx.cuit >= 0 ? String(row[idx.cuit] ?? "").replace(/\D/g, "") : "";
+    const fecha = normalizeFecha(cellStr(row, idx.fecha));
+    const num_comp = cellStr(row, idx.num_comp);
+    const punto_venta = cellStr(row, idx.punto_venta);
+    const valorNum = parseAmount(row[idx.valor]);
+    const retenNum = parseAmount(row[idx.reten]);
+    const cuit = cellDigits(row, idx.cuit);
     const numComprobanteDig = ((punto_venta || "") + (num_comp || "")).replace(/\D/g, "") || "0";
     const first = numComprobanteDig.slice(0, 1);
     const rest = numComprobanteDig.slice(1).padStart(5, "0").slice(-5);
@@ -67,15 +57,15 @@ function sicoreTransform(headers: string[], rows: unknown[][]): string {
       "01" +
       fecha10 +
       numComprobante +
-      formatNumFixed(valorNum, 16) +
+      formatNumber(valorNum, 16, " ") +
       "0217" +
       "078" +
       "1" +
-      formatNumFixed(valorNum, 14) +
+      formatNumber(valorNum, 14, " ") +
       fecha10 +
       "01" +
       "0" +
-      formatNumFixed(retenNum, 14) +
+      formatNumber(retenNum, 14, " ") +
       "  0,00" +
       "          " +
       "80" +

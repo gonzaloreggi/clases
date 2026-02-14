@@ -2,6 +2,58 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { findCol, findColContaining } from "@/lib/parseoUtils";
 
+/** Try multiple header names; returns index of first match or -1. */
+function findColByNames(headers: string[], names: string[]): number {
+  for (const name of names) {
+    const idx = findCol(headers, name);
+    if (idx >= 0) return idx;
+  }
+  const containing = names.find((n) => n.includes(" ") || n.length > 4);
+  if (containing) {
+    const idx = findColContaining(headers, containing.split(" ")[0]);
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+/** Canonical header names used by ivaTransform. */
+const CANONICAL = {
+  col493: "493",
+  cuit: "CUIT",
+  fecha: "FECHA PERCEPCION",
+  puntoVenta: "PUNTO DE VENTA",
+  numeroComprobante: "NUMERO DE COMPROBANTE",
+  importe: "IMPORTE",
+} as const;
+
+/** Normalize headers so ivaTransform finds columns. Tries common variants (general + cuadro compras). */
+function normalizeHeadersForIva(headers: string[]): { normalized: string[]; missing: string[] } {
+  const normalized = [...headers];
+  const missing: string[] = [];
+
+  const trySet = (canonical: string, names: string[]): boolean => {
+    const idx = findColByNames(headers, names);
+    if (idx >= 0) {
+      normalized[idx] = canonical;
+      return true;
+    }
+    missing.push(canonical);
+    return false;
+  };
+
+  trySet(CANONICAL.col493, ["493", "Col493", "Codigo", "Código"]);
+  trySet(CANONICAL.cuit, ["CUIT", "Cuit", "C.U.I.T.", "Cuit Proveedor", "Proveedor CUIT"]);
+  trySet(
+    CANONICAL.fecha,
+    ["FECHA PERCEPCION", "FECHA", "Fecha", "FECHA EMISION", "Fecha Emisión", "Fecha de comprobante", "Fecha Comprobante"]
+  );
+  trySet(CANONICAL.puntoVenta, ["PUNTO DE VENTA", "Punto de Venta", "Pto. Venta", "Punto Venta", "PV"]);
+  trySet(CANONICAL.numeroComprobante, ["NUMERO DE COMPROBANTE", "Número de Comprobante", "Nº Comprobante", "Numero Comprobante", "Número", "Comprobante"]);
+  trySet(CANONICAL.importe, ["IMPORTE", "Importe", "IMPORTE TOTAL", "Monto", "Total", "Importe Total"]);
+
+  return { normalized, missing };
+}
+
 function escapeCsvField(value: unknown): string {
   const s = String(value ?? "").trim();
   if (s.includes(";") || s.includes('"') || s.includes("\n")) {
@@ -85,6 +137,8 @@ function ivaTransform(headers: string[], rows: unknown[][]): string {
   return lines.join("\n");
 }
 
+const REQUIRED_COLUMNS = [CANONICAL.cuit, CANONICAL.fecha, CANONICAL.importe];
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -97,7 +151,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = ivaTransform(headers, rows);
+    const { normalized, missing } = normalizeHeadersForIva(headers);
+    const missingRequired = REQUIRED_COLUMNS.filter((col) => missing.includes(col));
+    if (missingRequired.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Faltan columnas requeridas en el archivo.",
+          missingColumns: missingRequired,
+          hint: "Se esperan columnas como: CUIT, FECHA (o FECHA PERCEPCION), IMPORTE. Pueden tener nombres similares (ej. Cuit, Fecha Emisión, Importe Total).",
+        },
+        { status: 400 }
+      );
+    }
+
+    const result = ivaTransform(normalized, rows);
     return NextResponse.json({ result });
   } catch {
     return NextResponse.json(

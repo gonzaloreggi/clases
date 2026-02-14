@@ -17,6 +17,8 @@ export interface ParseoConfig {
   title: string;
   /** Subtitle shown below the title (can include JSX) */
   subtitle: React.ReactNode;
+  /** Optional custom back link: { href, label }. Default: link to "/" with "Volver a Herramientas de parseo" */
+  backLink?: { href: string; label: string };
   /** Input file format */
   inputFormat: "csv" | "xlsx";
   /** Label for the input format, e.g. "CSV" or "XLSX" */
@@ -182,10 +184,13 @@ export default function ParseoPageLayout({ config }: { config: ParseoConfig }) {
 
   const inputTypeLabel = config.inputLabel === "XLSX" ? "Excel" : config.inputLabel;
 
+  const backHref = config.backLink?.href ?? "/";
+  const backLabel = config.backLink?.label ?? "Volver a Herramientas de parseo";
+
   return (
     <main className="tool-container">
-      <Link href="/" className="back-link">
-        ← Volver a Herramientas de parseo
+      <Link href={backHref} className="back-link">
+        ← {backLabel}
       </Link>
       <header className="page-header">
         <Link href="/" className="logo-link">

@@ -51,6 +51,23 @@ export function parseAmount(value: unknown): number {
   return parseFloat(String(value ?? "0").trim().replace(",", ".")) || 0;
 }
 
+/**
+ * Parse numeric value from Excel/cell. Handles:
+ * - Already a number (Excel often gives 4463.49): use as-is.
+ * - Argentine string "4.463,49" (dot=thousands, comma=decimal): strip dots, swap comma.
+ * - US string "4463.49": parse normally.
+ */
+export function parseAmountArgentine(value: unknown): number {
+  if (typeof value === "number" && !Number.isNaN(value)) return value;
+  const s = String(value ?? "").trim();
+  if (!s) return 0;
+  if (s.includes(",")) {
+    const normalized = s.replace(/\./g, "").replace(",", ".");
+    return parseFloat(normalized) || 0;
+  }
+  return parseFloat(s) || 0;
+}
+
 /** Read cell as string. If colIdx < 0 returns fallback (default ""). */
 export function cellStr(row: unknown[], colIdx: number, fallback = ""): string {
   if (colIdx < 0) return fallback;

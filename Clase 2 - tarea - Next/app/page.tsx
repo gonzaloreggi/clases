@@ -34,6 +34,11 @@ export default function Home() {
           <h2>Parseo SICORE GANANCIAS</h2>
           <p>CSV retenciones ganancias → TXT SICORE.</p>
         </Link>
+        <Link href="/bot/comprobantes" className="card-link card-bot">
+          <span className="card-icon">🤖</span>
+          <h2>Bot Comprobantes</h2>
+          <p>Consultar comprobantes AFIP en lote con seguimiento en vivo.</p>
+        </Link>
       </nav>
     </main>
   );

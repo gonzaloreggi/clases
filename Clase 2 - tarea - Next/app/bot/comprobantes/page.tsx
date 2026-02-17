@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -75,6 +75,78 @@ function parseAmount(value: unknown): number {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/** Remove XML-invalid control characters so Excel can open the xlsx (evita error en sheet1.xml). */
+function sanitizeStringForXml(s: string): string {
+  if (typeof s !== "string") return s;
+  return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+}
+
+const SHEET1_PATH = "xl/worksheets/sheet1.xml";
+
+/** Fix sheet1.xml: strip leading garbage, control chars, and conditionalFormatting (can cause "Línea 2, columna 0"), write UTF-8 no BOM. */
+async function sanitizeSheet1XmlInXlsxBuffer(
+  buffer: ArrayBuffer | Buffer,
+): Promise<ArrayBuffer> {
+  const arrayBuf =
+    buffer instanceof ArrayBuffer
+      ? buffer
+      : (buffer as Buffer).buffer.slice(
+          (buffer as Buffer).byteOffset,
+          (buffer as Buffer).byteOffset + (buffer as Buffer).byteLength,
+        );
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(arrayBuf);
+  const entry = zip.file(SHEET1_PATH);
+  if (!entry) return arrayBuf;
+  let xml = await entry.async("string");
+  xml = xml.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "");
+  const firstAngle = xml.indexOf("<");
+  if (firstAngle > 0) xml = xml.slice(firstAngle);
+  xml = xml.replace(/<conditionalFormatting[^/]*\/>/g, "");
+  xml = xml.replace(/<conditionalFormatting[^>]*>[\s\S]*?<\/conditionalFormatting>/g, "");
+  const utf8 = new TextEncoder().encode(xml);
+  zip.file(SHEET1_PATH, utf8);
+  return zip.generateAsync({ type: "arraybuffer" });
+}
+
+/** Sanitize cell value for XML: no undefined/NaN; strings get control chars stripped. */
+function sanitizeCellValueForXml(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (value == null) return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return value;
+  }
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return sanitizeStringForXml(value);
+  return value;
+}
+
+/** Columna 1 = A, 8 = H, 27 = AA, 42 = AP, etc. */
+function colLetter(col: number): string {
+  let s = "";
+  let c = col;
+  while (c > 0) {
+    c -= 1;
+    s = String.fromCharCode(65 + (c % 26)) + s;
+    c = Math.floor(c / 26);
+  }
+  return s;
+}
+
+/** Última columna (1-based) que tiene encabezado en la fila dada. No escribir más allá para no rellenar columnas sin encabezado. */
+function getLastHeaderColumn(
+  sheet: ExcelJS.Worksheet,
+  headerRow: number = 5,
+): number {
+  for (let col = 1; col <= 60; col++) {
+    const cell = sheet.getCell(headerRow, col);
+    const text = (cell.text ?? String(cell.value ?? "")).trim();
+    if (!text) return Math.max(1, col - 1);
+  }
+  return 60;
 }
 
 function toDisplayDate(raw: string): string {
@@ -308,9 +380,153 @@ function collectRecibidos(data: Record<string, unknown>): ComprobanteRow[] {
   return rows;
 }
 
-function buildVenerSheetRows(comprobantes: ComprobanteRow[]): unknown[][] {
-  // Solo devolvemos filas de datos; la plantilla aporta encabezados y estilos.
+// Plantilla VENTAS/COMPRAS: 2 filas usables (7 y 8). Insertamos (N-2) filas entre 7 y 8 para tener N filas de datos.
+const TEMPLATE_DATA_FIRST_ROW = 7;
+const TEMPLATE_USABLE_DATA_ROWS = 2; // filas 7 y 8
+const TEMPLATE_TOTALES_ROW = 20;
+const MIN_DATA_ROW_HEIGHT = 20;
+/** Máximo de columnas al reemplazar fórmulas compartidas (debe cubrir toda la hoja para evitar "Shared Formula master" en columnas sin encabezado). */
+const MAX_COLS_FOR_REPLACE_FORMULAS = 60;
+
+/** Copia formato (número, fuente, bordes, etc.) de una celda a otra. Sin ajustar texto ni reducir para ajustar. */
+function copyCellStyle(
+  src: ExcelJS.Cell,
+  dest: ExcelJS.Cell,
+): void {
+  if (src.numFmt != null) dest.numFmt = src.numFmt;
+  if (src.font && typeof src.font === "object")
+    dest.font = { ...src.font } as ExcelJS.Font;
+  if (src.alignment && typeof src.alignment === "object") {
+    dest.alignment = { ...src.alignment } as ExcelJS.Alignment;
+    dest.alignment.wrapText = false;
+    dest.alignment.shrinkToFit = false;
+  }
+  if (src.border && typeof src.border === "object")
+    dest.border = { ...src.border } as ExcelJS.Borders;
+  if (src.fill && typeof src.fill === "object")
+    dest.fill = { ...src.fill } as ExcelJS.Fill;
+}
+
+/** Reemplaza cualquier fórmula (compartida o explícita) por su valor en el rango indicado. */
+function replaceFormulasWithValuesInRange(
+  sheet: ExcelJS.Worksheet,
+  rowStart: number,
+  rowEnd: number,
+  numCols: number,
+): void {
+  for (let r = rowStart; r <= rowEnd; r++) {
+    for (let c = 1; c <= numCols; c++) {
+      const cell = sheet.getCell(r, c);
+      const val = cell.value;
+      if (val != null && typeof val === "object") {
+        const v = val as { sharedFormula?: string; formula?: string; result?: unknown };
+        if (v.sharedFormula != null || v.formula != null) {
+          cell.value = v.result ?? null;
+        }
+      }
+    }
+  }
+}
+
+/** Recorre las filas existentes de la hoja (columnas 1..60) y reemplaza cualquier fórmula por su valor. Evita "Shared Formula master..." al serializar. */
+function stripAllFormulasInSheet(sheet: ExcelJS.Worksheet): void {
+  const lastRow = sheet.rowCount || 0;
+  for (let r = 1; r <= lastRow; r++) {
+    const row = sheet.getRow(r);
+    for (let c = 1; c <= MAX_COLS_FOR_REPLACE_FORMULAS; c++) {
+      try {
+        const cell = row.getCell(c);
+        const val = cell.value;
+        if (val != null && typeof val === "object") {
+          const v = val as { sharedFormula?: string; formula?: string; result?: unknown };
+          if (v.sharedFormula != null || v.formula != null) {
+            cell.value = v.result ?? null;
+          }
+        }
+      } catch {
+        // ignore sparse/missing cells
+      }
+    }
+  }
+}
+
+/** Inserta (N-2) filas entre la 7 y la 8, con el mismo formato que fila 7. Plantilla tiene 2 filas usables (7 y 8); quedan N filas (7..7+N-1) para datos. */
+function ensureDataRowsBetween7And8(
+  sheet: ExcelJS.Worksheet,
+  dataRowCount: number,
+  numCols: number,
+  styleSourceRow: number,
+): void {
+  if (dataRowCount <= TEMPLATE_USABLE_DATA_ROWS) return;
+
+  const rowsToAdd = dataRowCount - TEMPLATE_USABLE_DATA_ROWS;
+  const emptyRow = Array(numCols).fill(undefined);
+  const newRows = Array.from({ length: rowsToAdd }, () => [...emptyRow]);
+  sheet.spliceRows(TEMPLATE_DATA_FIRST_ROW + 1, 0, ...newRows);
+
+  const sourceRow = sheet.getRow(styleSourceRow);
+  const sourceHeight = sourceRow.height ?? MIN_DATA_ROW_HEIGHT;
+  for (let r = 0; r < rowsToAdd; r++) {
+    const rowNum = TEMPLATE_DATA_FIRST_ROW + 1 + r;
+    const row = sheet.getRow(rowNum);
+    row.height = sourceHeight;
+    for (let c = 1; c <= numCols; c++) {
+      copyCellStyle(
+        sheet.getCell(styleSourceRow, c),
+        sheet.getCell(rowNum, c),
+      );
+    }
+  }
+}
+
+/** Fila TOTALES: combinar A–F "TOTALES" centrado + sumas. Misma lógica que VENTAS (usar en ambos). */
+function writeTotalesRow(
+  sheet: ExcelJS.Worksheet,
+  startRow: number,
+  N: number,
+  lastCol: number,
+  opts?: { nullCol43?: boolean; mergeWithoutStyle?: boolean; skipMerge?: boolean },
+): void {
+  const lastDataRow = startRow + N - 1;
+  const totalesRow = startRow + N + 1;
+  const totalesMergeRange = `A${totalesRow}:F${totalesRow}`;
+  if (!opts?.skipMerge) {
+    try {
+      sheet.unMergeCells(totalesMergeRange);
+    } catch {
+      // ignore if not merged
+    }
+    if (opts?.mergeWithoutStyle) {
+      (sheet as unknown as { mergeCellsWithoutStyle: (r: string) => void }).mergeCellsWithoutStyle(totalesMergeRange);
+    } else {
+      sheet.mergeCells(totalesMergeRange);
+    }
+  }
+  const totalesLabel = sheet.getCell(totalesRow, 1);
+  totalesLabel.value = "TOTALES";
+  if (!totalesLabel.alignment) totalesLabel.alignment = {};
+  totalesLabel.alignment.horizontal = "center";
+  totalesLabel.alignment.vertical = "middle";
+  sheet.getCell(totalesRow, 7).value = {
+    formula: `SUM(G${startRow}:G${lastDataRow})`,
+  };
+  for (let col = 8; col <= lastCol; col++) {
+    sheet.getCell(totalesRow, col).value = {
+      formula: `SUM(${colLetter(col)}${startRow}:${colLetter(col)}${lastDataRow})`,
+    };
+  }
+  if (opts?.nullCol43) {
+    sheet.getCell(totalesRow, 43).value = null;
+  }
+}
+
+/** maxCols: si se pasa, la fila tendrá solo esa cantidad de columnas (solo hasta columnas con encabezado). */
+function buildVenerSheetRows(
+  comprobantes: ComprobanteRow[],
+  maxCols: number = 42,
+): unknown[][] {
   const rows: unknown[][] = [];
+  const trailingZeros = Math.max(0, maxCols - 14 - 6); // 14 datos + 6 ceros fijos + resto hasta maxCols
 
   for (const comp of comprobantes) {
     const fecha = toDisplayDate((comp["Fecha de Emisión"] ?? "") as string);
@@ -353,31 +569,7 @@ function buildVenerSheetRows(comprobantes: ComprobanteRow[]): unknown[][] {
       0,
       0,
       0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
+      ...Array(trailingZeros).fill(0),
     ]);
   }
 
@@ -389,12 +581,12 @@ function buildComerSheetRows(comprobantes: ComprobanteRow[]): unknown[][] {
   const rows: unknown[][] = [];
 
   for (const comp of comprobantes) {
-    const fecha = toDisplayDate((comp["Fecha de Emisión"] ?? "") as string);
-    const tipo = (comp["Tipo de Comprobante"] ?? "") as string;
-    const ptoVta = (comp["Punto de Venta"] ?? "") as string;
-    const nroDesde = (comp["Número Desde"] ?? "") as string;
-    const cuitEm = (comp["Nro. Doc. Emisor"] ?? "") as string;
-    const denomEm = (comp["Denominación Emisor"] ?? "") as string;
+    const fecha = sanitizeStringForXml(toDisplayDate((comp["Fecha de Emisión"] ?? "") as string));
+    const tipo = sanitizeStringForXml((comp["Tipo de Comprobante"] ?? "") as string);
+    const ptoVta = sanitizeStringForXml((comp["Punto de Venta"] ?? "") as string);
+    const nroDesde = sanitizeStringForXml((comp["Número Desde"] ?? "") as string);
+    const cuitEm = sanitizeStringForXml((comp["Nro. Doc. Emisor"] ?? "") as string);
+    const denomEm = sanitizeStringForXml((comp["Denominación Emisor"] ?? "") as string);
 
     const total = round2(parseAmount(comp["Imp. Total"]));
     const bi = round2(parseAmount(comp["Imp. Neto Gravado Total"]));
@@ -720,53 +912,83 @@ export default function BotComprobantesPage() {
       return;
     }
 
-    // Cargar plantilla VENER desde /public/templates
     try {
-      const res = await fetch("/templates/VENER_template.xlsx");
-      if (!res.ok) {
-        throw new Error("No se pudo cargar la plantilla VENER.");
+      const res = await fetch("/templates/VENTAS_template.xlsx");
+      if (!res.ok) throw new Error("No se pudo cargar la plantilla VENTAS.");
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await res.arrayBuffer());
+      const sheet = wb.worksheets[0];
+      if (!sheet) throw new Error("La plantilla VENTAS no tiene hojas.");
+
+      // Quitar todas las fórmulas de la hoja para evitar "Shared Formula master..." al escribir
+      stripAllFormulasInSheet(sheet);
+
+      const startRow = TEMPLATE_DATA_FIRST_ROW;
+      const lastHeaderCol =
+        Math.max(
+          getLastHeaderColumn(sheet, 4),
+          getLastHeaderColumn(sheet, 5),
+          getLastHeaderColumn(sheet, 6),
+        ) || 42;
+      const dataRows = buildVenerSheetRows(allEmitidos, lastHeaderCol);
+      const N = dataRows.length;
+      const styleRow = startRow;
+
+      // Replace all formulas with values in template rows 7–8 (use full column range so column L etc. are cleared)
+      replaceFormulasWithValuesInRange(sheet, startRow, startRow + TEMPLATE_USABLE_DATA_ROWS - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
+
+      // Insert (N-2) rows between 7 and 8 with same format as row 7. Do not touch anything else.
+      if (N > TEMPLATE_USABLE_DATA_ROWS) {
+        ensureDataRowsBetween7And8(sheet, N, lastHeaderCol, styleRow);
       }
-      const arrayBuffer = await res.arrayBuffer();
-      const wb = XLSX.read(arrayBuffer, { type: "array" });
-      const sheetName = wb.SheetNames[0] ?? "Sheet1";
-      const ws = wb.Sheets[sheetName];
 
-      const rows = buildVenerSheetRows(allEmitidos);
-      const dataRows = rows; // solo datos, encabezados vienen de la plantilla
+      // Strip again after insert: copied rows (e.g. TOTALES) can still have shared formula refs from rDst.values = rSrc.values
+      stripAllFormulasInSheet(sheet);
 
-      // Insertar datos desde la fila 7 (A7) respetando estilos existentes
-      const startRow = 7; // 1-based
-      for (let r = 0; r < dataRows.length; r++) {
-        const row = dataRows[r];
-        for (let c = 0; c < row.length; c++) {
-          const addr = XLSX.utils.encode_cell({ r: startRow - 1 + r, c });
-          const existing = ws[addr] || {};
-          const v = row[c];
-          ws[addr] = {
-            ...existing,
-            v,
-            t: typeof v === "number" ? "n" : "s",
-          };
+      // Replace formulas in data block (belt-and-braces) then clear and write
+      replaceFormulasWithValuesInRange(sheet, startRow, startRow + N - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
+
+      // Clear values in data rows (bottom-to-top)
+      for (let r = N - 1; r >= 0; r--) {
+        for (let c = 1; c <= lastHeaderCol; c++) {
+          const cell = sheet.getCell(startRow + r, c);
+          copyCellStyle(sheet.getCell(styleRow, c), cell);
+          cell.value = null;
         }
       }
 
-      // Asegurar que la columna TOTAL (columna G) sea fórmula SUM(H:AR) por fila
-      for (let i = 0; i < dataRows.length; i++) {
-        const rowNum = startRow + i;
-        const addr = `G${rowNum}`;
-        const cell = ws[addr] ?? {};
-        cell.t = "n";
-        cell.f = `SUM(H${rowNum}:AR${rowNum})`;
-        ws[addr] = cell;
+      // Write data only in rows 7..7+N-1 (format + value); sanitize strings to avoid XML error
+      for (let r = 0; r < N; r++) {
+        for (let c = 0; c < dataRows[r].length; c++) {
+          const cell = sheet.getCell(startRow + r, c + 1);
+          copyCellStyle(sheet.getCell(styleRow, c + 1), cell);
+          cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]);
+        }
       }
+      const sumEndCol = colLetter(lastHeaderCol);
+      for (let i = 0; i < N; i++) {
+        const rowNum = startRow + i;
+        sheet.getCell(rowNum, 7).value = { formula: `SUM(H${rowNum}:${sumEndCol}${rowNum})` };
+      }
+
+      writeTotalesRow(sheet, startRow, N, lastHeaderCol);
 
       const suffix = formatMonthSuffix(dateFrom || dateTo);
       const filename =
-        `VENER${suffix || new Date().toISOString().slice(5, 7) + new Date().getFullYear().toString().slice(-2)}.xlsx`;
-      XLSX.writeFile(wb, filename);
+        `VENTAS${suffix || new Date().toISOString().slice(5, 7) + new Date().getFullYear().toString().slice(-2)}.xlsx`;
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert(`Error al exportar VENER: ${msg}`);
+      alert(`Error al exportar VENTAS: ${msg}`);
     }
   };
 
@@ -783,58 +1005,80 @@ export default function BotComprobantesPage() {
     }
 
     try {
-      const res = await fetch("/templates/COMER_template.xlsx");
-      if (!res.ok) {
-        throw new Error("No se pudo cargar la plantilla COMER.");
+      const res = await fetch("/templates/COMPRAS_template.xlsx");
+      if (!res.ok) throw new Error("No se pudo cargar la plantilla COMPRAS.");
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await res.arrayBuffer(), {
+        ignoreNodes: ["mergeCells", "conditionalFormatting"],
+      });
+      const sheet = wb.worksheets[0];
+      if (!sheet) throw new Error("La plantilla COMPRAS no tiene hojas.");
+
+      const b2 = sheet.getCell(2, 2);
+      if (typeof b2.value === "string") {
+        b2.value = sanitizeStringForXml(b2.value);
       }
-      const arrayBuffer = await res.arrayBuffer();
-      const wb = XLSX.read(arrayBuffer, { type: "array" });
-      const sheetName = wb.SheetNames[0] ?? "Sheet1";
-      const ws = wb.Sheets[sheetName];
+      if (!b2.alignment) b2.alignment = {};
+      b2.alignment.wrapText = false;
+      b2.alignment.shrinkToFit = false;
 
-      const rows = buildComerSheetRows(allRecibidos);
-      const dataRows = rows; // solo datos, encabezados vienen de la plantilla
+      stripAllFormulasInSheet(sheet);
 
-      // Insertar datos desde la fila 7 (A7) respetando estilos existentes
-      const startRow = 7;
-      for (let r = 0; r < dataRows.length; r++) {
-        const row = dataRows[r];
-        for (let c = 0; c < row.length; c++) {
-          const addr = XLSX.utils.encode_cell({ r: startRow - 1 + r, c });
-          const existing = ws[addr] || {};
-          const v = row[c];
-          ws[addr] = {
-            ...existing,
-            v,
-            t: typeof v === "number" ? "n" : "s",
-          };
+      const startRow = TEMPLATE_DATA_FIRST_ROW;
+      const COMPRAS_COLS = 43;
+      const dataRows = buildComerSheetRows(allRecibidos);
+      const N = dataRows.length;
+      const styleRow = startRow;
+
+      replaceFormulasWithValuesInRange(sheet, startRow, startRow + TEMPLATE_USABLE_DATA_ROWS - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
+
+      if (N > TEMPLATE_USABLE_DATA_ROWS) {
+        ensureDataRowsBetween7And8(sheet, N, COMPRAS_COLS, styleRow);
+      }
+
+      stripAllFormulasInSheet(sheet);
+
+      replaceFormulasWithValuesInRange(sheet, startRow, startRow + N - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
+
+      for (let r = N - 1; r >= 0; r--) {
+        for (let c = 1; c <= COMPRAS_COLS; c++) {
+          const cell = sheet.getCell(startRow + r, c);
+          copyCellStyle(sheet.getCell(styleRow, c), cell);
+          cell.value = null;
         }
       }
 
-      // Asegurar que la columna TOTAL (columna G) sea fórmula SUM(H:AP) por fila
-      for (let i = 0; i < dataRows.length; i++) {
+      for (let r = 0; r < N; r++) {
+        for (let c = 0; c < (dataRows[r] as unknown[]).length; c++) {
+          const cell = sheet.getCell(startRow + r, c + 1);
+          copyCellStyle(sheet.getCell(styleRow, c + 1), cell);
+          cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]);
+        }
+      }
+      for (let i = 0; i < N; i++) {
         const rowNum = startRow + i;
-        const addr = `G${rowNum}`;
-        const cell = ws[addr] ?? {};
-        cell.t = "n";
-        cell.f = `SUM(H${rowNum}:AP${rowNum})`;
-        ws[addr] = cell;
+        sheet.getCell(rowNum, 7).value = { formula: `SUM(H${rowNum}:AP${rowNum})` };
       }
 
-      // Dejar total de CONCEPTOS (fila totales) vacío en COMER (ej. AQ20)
-      const conceptosTotalAddr = "AQ20";
-      if (ws[conceptosTotalAddr]) {
-        ws[conceptosTotalAddr].t = "s";
-        ws[conceptosTotalAddr].v = "";
-      }
+      writeTotalesRow(sheet, startRow, N, 42, { nullCol43: true, mergeWithoutStyle: true });
 
       const suffix = formatMonthSuffix(dateFrom || dateTo);
       const filename =
-        `COMER${suffix || new Date().toISOString().slice(5, 7) + new Date().getFullYear().toString().slice(-2)}.xlsx`;
-      XLSX.writeFile(wb, filename);
+        `COMPRAS${suffix || new Date().toISOString().slice(5, 7) + new Date().getFullYear().toString().slice(-2)}.xlsx`;
+      let buffer: ArrayBuffer | Buffer = await wb.xlsx.writeBuffer();
+      buffer = await sanitizeSheet1XmlInXlsxBuffer(buffer);
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert(`Error al exportar COMER: ${msg}`);
+      alert(`Error al exportar COMPRAS: ${msg}`);
     }
   };
 
@@ -1322,13 +1566,13 @@ export default function BotComprobantesPage() {
               className="btn-sm btn-outline"
               onClick={exportVenerExcel}
             >
-              📊 Exportar VENER (Emitidos)
+              📊 Exportar VENTAS (Emitidos)
             </button>
             <button
               className="btn-sm btn-outline"
               onClick={exportComerExcel}
             >
-              📊 Exportar COMER (Recibidos)
+              📊 Exportar COMPRAS (Recibidos)
             </button>
           </>
         )}

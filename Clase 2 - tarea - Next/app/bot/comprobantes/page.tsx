@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import * as XLSX from "xlsx";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -59,6 +60,38 @@ function fromApiDate(api: string): string {
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function parseAmount(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return 0;
+  const normalized = value
+    .replace(/\./g, "")
+    .replace(",", ".")
+    .replace(/[^0-9.-]/g, "");
+  const n = parseFloat(normalized);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function toDisplayDate(raw: string): string {
+  if (!raw) return "";
+  if (raw.includes("-")) {
+    const [y, m, d] = raw.split("-");
+    if (y && m && d) return `${d}/${m}/${y}`;
+  }
+  if (raw.includes("/")) return raw;
+  return raw;
+}
+
+function formatMonthSuffix(dateIso: string): string {
+  if (!dateIso) return "";
+  const [y, m] = dateIso.split("-");
+  if (!y || !m) return "";
+  return `${m}${y.slice(-2)}`;
 }
 
 function getResultSummary(data: Record<string, unknown>): string {
@@ -207,6 +240,222 @@ const COL_SHORT: Record<string, string> = {
   "Imp. Neto Gravado IVA 27%": "Neto 27%",
 };
 
+/* ------------------------------------------------------------------ */
+/*  Excel export helpers                                              */
+/* ------------------------------------------------------------------ */
+
+type ComprobanteRow = Record<string, unknown>;
+
+function collectEmitidos(data: Record<string, unknown>): ComprobanteRow[] {
+  const rows: ComprobanteRow[] = [];
+
+  if (Array.isArray(data.comprobantes) && data.type === "E") {
+    rows.push(...(data.comprobantes as ComprobanteRow[]));
+  }
+
+  const emitidos = data.emitidos as
+    | { comprobantes?: unknown[] }
+    | undefined;
+  if (emitidos && Array.isArray(emitidos.comprobantes)) {
+    rows.push(...(emitidos.comprobantes as ComprobanteRow[]));
+  }
+
+  if (data.results && typeof data.results === "object") {
+    for (const val of Object.values(
+      data.results as Record<
+        string,
+        { emitidos?: { comprobantes?: unknown[] } }
+      >,
+    )) {
+      const e = val.emitidos;
+      if (e && Array.isArray(e.comprobantes)) {
+        rows.push(...(e.comprobantes as ComprobanteRow[]));
+      }
+    }
+  }
+
+  return rows;
+}
+
+function collectRecibidos(data: Record<string, unknown>): ComprobanteRow[] {
+  const rows: ComprobanteRow[] = [];
+
+  if (Array.isArray(data.comprobantes) && data.type === "R") {
+    rows.push(...(data.comprobantes as ComprobanteRow[]));
+  }
+
+  const recibidos = data.recibidos as
+    | { comprobantes?: unknown[] }
+    | undefined;
+  if (recibidos && Array.isArray(recibidos.comprobantes)) {
+    rows.push(...(recibidos.comprobantes as ComprobanteRow[]));
+  }
+
+  if (data.results && typeof data.results === "object") {
+    for (const val of Object.values(
+      data.results as Record<
+        string,
+        { recibidos?: { comprobantes?: unknown[] } }
+      >,
+    )) {
+      const r = val.recibidos;
+      if (r && Array.isArray(r.comprobantes)) {
+        rows.push(...(r.comprobantes as ComprobanteRow[]));
+      }
+    }
+  }
+
+  return rows;
+}
+
+function buildVenerSheetRows(comprobantes: ComprobanteRow[]): unknown[][] {
+  // Solo devolvemos filas de datos; la plantilla aporta encabezados y estilos.
+  const rows: unknown[][] = [];
+
+  for (const comp of comprobantes) {
+    const fecha = toDisplayDate((comp["Fecha de Emisión"] ?? "") as string);
+    const tipo = (comp["Tipo de Comprobante"] ?? "") as string;
+    const ptoVta = (comp["Punto de Venta"] ?? "") as string;
+    const nroDesde = (comp["Número Desde"] ?? "") as string;
+    const cuitRec = (comp["Nro. Doc. Receptor"] ?? "") as string;
+    const denomRec = (comp["Denominación Receptor"] ?? "") as string;
+
+    const total = round2(parseAmount(comp["Imp. Total"]));
+    const bi = round2(parseAmount(comp["Imp. Neto Gravado Total"]));
+    const neto21 = round2(parseAmount(comp["Imp. Neto Gravado IVA 21%"]));
+    const neto105 = round2(parseAmount(comp["Imp. Neto Gravado IVA 10,5%"]));
+    const neto27 = round2(parseAmount(comp["Imp. Neto Gravado IVA 27%"]));
+    const iva21 = round2(neto21 * 0.21);
+    const iva105 = round2(neto105 * 0.105);
+    const iva27 = round2(neto27 * 0.27);
+    const exento = round2(parseAmount(comp["Imp. Op. Exentas"]));
+    const noGrav = round2(parseAmount(comp["Imp. Neto No Gravado"]));
+    const noAlcan = round2(parseAmount(comp["Imp. Neto Gravado IVA 0%"]));
+
+    rows.push([
+      fecha,
+      tipo,
+      ptoVta,
+      nroDesde,
+      cuitRec,
+      denomRec,
+      total,
+      bi,
+      iva21,
+      iva105,
+      iva27,
+      exento,
+      noGrav,
+      noAlcan,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
+  }
+
+  return rows;
+}
+
+function buildComerSheetRows(comprobantes: ComprobanteRow[]): unknown[][] {
+  // Solo devolvemos filas de datos; la plantilla aporta encabezados y estilos.
+  const rows: unknown[][] = [];
+
+  for (const comp of comprobantes) {
+    const fecha = toDisplayDate((comp["Fecha de Emisión"] ?? "") as string);
+    const tipo = (comp["Tipo de Comprobante"] ?? "") as string;
+    const ptoVta = (comp["Punto de Venta"] ?? "") as string;
+    const nroDesde = (comp["Número Desde"] ?? "") as string;
+    const cuitEm = (comp["Nro. Doc. Emisor"] ?? "") as string;
+    const denomEm = (comp["Denominación Emisor"] ?? "") as string;
+
+    const total = round2(parseAmount(comp["Imp. Total"]));
+    const bi = round2(parseAmount(comp["Imp. Neto Gravado Total"]));
+    const neto21 = round2(parseAmount(comp["Imp. Neto Gravado IVA 21%"]));
+    const neto105 = round2(parseAmount(comp["Imp. Neto Gravado IVA 10,5%"]));
+    const neto27 = round2(parseAmount(comp["Imp. Neto Gravado IVA 27%"]));
+    const iva21 = round2(neto21 * 0.21);
+    const iva105 = round2(neto105 * 0.105);
+    const iva27 = round2(neto27 * 0.27);
+    const noGrav = round2(parseAmount(comp["Imp. Neto No Gravado"]));
+
+    rows.push([
+      fecha,
+      tipo,
+      ptoVta,
+      nroDesde,
+      cuitEm,
+      denomEm,
+      total,
+      bi,
+      iva21,
+      iva105,
+      iva27,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      noGrav,
+      "",
+    ]);
+  }
+
+  return rows;
+}
+
 const STATUS_LABELS: Record<TaskStatus, string> = {
   pending: "Pendiente",
   processing: "Procesando…",
@@ -234,12 +483,14 @@ export default function BotComprobantesPage() {
   const [expandedTask, setExpandedTask] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState<"table" | "json">("table");
   const [retryInfo, setRetryInfo] = useState<string | null>(null);
+  const csvFileInputRef = useRef<HTMLInputElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   /* ---------- import state ---------- */
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
+  const [csvImportError, setCsvImportError] = useState("");
 
   /* ---------- navigation guard ---------- */
   const router = useRouter();
@@ -338,6 +589,104 @@ export default function BotComprobantesPage() {
     }
   };
 
+  /* ---------- CSV import ---------- */
+  const handleCsvFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = String(e.target?.result ?? "");
+        const lines = text
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0);
+
+        if (lines.length < 2) {
+          throw new Error("El CSV no tiene filas de datos");
+        }
+
+        const headerLine = lines[0];
+        const delimiter = headerLine.includes(";") ? ";" : ",";
+        const headers = headerLine
+          .split(delimiter)
+          .map((h) => h.trim().toLowerCase());
+
+        const idxCuit = headers.findIndex((h) => h === "cuit");
+        const idxAfip = headers.findIndex((h) => h === "afip");
+        const idxCuitPj = headers.findIndex(
+          (h) => h === "cuit pj" || h === "cuit_pj" || h === "cuitpj",
+        );
+
+        if (idxCuit === -1 || idxAfip === -1) {
+          throw new Error(
+            'El CSV debe tener al menos las columnas "CUIT" y "AFIP".',
+          );
+        }
+
+        const imported: AccountEntry[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          const raw = lines[i];
+          if (!raw) continue;
+          const cols = raw.split(delimiter);
+
+          const cuit = (cols[idxCuit] ?? "").trim();
+          const password = (cols[idxAfip] ?? "").trim();
+
+          if (!cuit || !password) {
+            // Fila incompleta, la ignoramos
+            continue;
+          }
+
+          let queriedRaw =
+            idxCuitPj !== -1 ? (cols[idxCuitPj] ?? "").trim() : "";
+          if (!queriedRaw) {
+            queriedRaw = cuit;
+          }
+
+          const queriedList = queriedRaw
+            .split(/[,\s;]+/)
+            .map((v) => v.trim())
+            .filter(Boolean);
+
+          const queriedCuits = queriedList.join(", ");
+
+          imported.push({
+            id: uid(),
+            cuit,
+            password,
+            queriedCuits,
+          });
+        }
+
+        if (imported.length === 0) {
+          throw new Error("No se encontraron filas válidas en el CSV.");
+        }
+
+        setAccounts(imported);
+        setCsvImportError("");
+      } catch (err) {
+        setCsvImportError(
+          err instanceof Error ? err.message : "No se pudo leer el CSV.",
+        );
+      }
+    };
+    reader.onerror = () => {
+      setCsvImportError("Error al leer el archivo CSV.");
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCsvInputChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvImportError("");
+    handleCsvFile(file);
+    // Permite volver a seleccionar el mismo archivo luego
+    e.target.value = "";
+  };
+
   /* ---------- export results ---------- */
   const exportResults = () => {
     const data = tasks.map((t) => ({
@@ -357,6 +706,136 @@ export default function BotComprobantesPage() {
     a.download = `bot-comprobantes-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportVenerExcel = async () => {
+    const allEmitidos: ComprobanteRow[] = [];
+    for (const t of tasks) {
+      if (!t.data) continue;
+      if (t.status !== "success" && t.status !== "partial") continue;
+      allEmitidos.push(...collectEmitidos(t.data));
+    }
+    if (allEmitidos.length === 0) {
+      alert("No hay comprobantes emitidos para exportar.");
+      return;
+    }
+
+    // Cargar plantilla VENER desde /public/templates
+    try {
+      const res = await fetch("/templates/VENER_template.xlsx");
+      if (!res.ok) {
+        throw new Error("No se pudo cargar la plantilla VENER.");
+      }
+      const arrayBuffer = await res.arrayBuffer();
+      const wb = XLSX.read(arrayBuffer, { type: "array" });
+      const sheetName = wb.SheetNames[0] ?? "Sheet1";
+      const ws = wb.Sheets[sheetName];
+
+      const rows = buildVenerSheetRows(allEmitidos);
+      const dataRows = rows; // solo datos, encabezados vienen de la plantilla
+
+      // Insertar datos desde la fila 7 (A7) respetando estilos existentes
+      const startRow = 7; // 1-based
+      for (let r = 0; r < dataRows.length; r++) {
+        const row = dataRows[r];
+        for (let c = 0; c < row.length; c++) {
+          const addr = XLSX.utils.encode_cell({ r: startRow - 1 + r, c });
+          const existing = ws[addr] || {};
+          const v = row[c];
+          ws[addr] = {
+            ...existing,
+            v,
+            t: typeof v === "number" ? "n" : "s",
+          };
+        }
+      }
+
+      // Asegurar que la columna TOTAL (columna G) sea fórmula SUM(H:AR) por fila
+      for (let i = 0; i < dataRows.length; i++) {
+        const rowNum = startRow + i;
+        const addr = `G${rowNum}`;
+        const cell = ws[addr] ?? {};
+        cell.t = "n";
+        cell.f = `SUM(H${rowNum}:AR${rowNum})`;
+        ws[addr] = cell;
+      }
+
+      const suffix = formatMonthSuffix(dateFrom || dateTo);
+      const filename =
+        `VENER${suffix || new Date().toISOString().slice(5, 7) + new Date().getFullYear().toString().slice(-2)}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Error al exportar VENER: ${msg}`);
+    }
+  };
+
+  const exportComerExcel = async () => {
+    const allRecibidos: ComprobanteRow[] = [];
+    for (const t of tasks) {
+      if (!t.data) continue;
+      if (t.status !== "success" && t.status !== "partial") continue;
+      allRecibidos.push(...collectRecibidos(t.data));
+    }
+    if (allRecibidos.length === 0) {
+      alert("No hay comprobantes recibidos para exportar.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/templates/COMER_template.xlsx");
+      if (!res.ok) {
+        throw new Error("No se pudo cargar la plantilla COMER.");
+      }
+      const arrayBuffer = await res.arrayBuffer();
+      const wb = XLSX.read(arrayBuffer, { type: "array" });
+      const sheetName = wb.SheetNames[0] ?? "Sheet1";
+      const ws = wb.Sheets[sheetName];
+
+      const rows = buildComerSheetRows(allRecibidos);
+      const dataRows = rows; // solo datos, encabezados vienen de la plantilla
+
+      // Insertar datos desde la fila 7 (A7) respetando estilos existentes
+      const startRow = 7;
+      for (let r = 0; r < dataRows.length; r++) {
+        const row = dataRows[r];
+        for (let c = 0; c < row.length; c++) {
+          const addr = XLSX.utils.encode_cell({ r: startRow - 1 + r, c });
+          const existing = ws[addr] || {};
+          const v = row[c];
+          ws[addr] = {
+            ...existing,
+            v,
+            t: typeof v === "number" ? "n" : "s",
+          };
+        }
+      }
+
+      // Asegurar que la columna TOTAL (columna G) sea fórmula SUM(H:AP) por fila
+      for (let i = 0; i < dataRows.length; i++) {
+        const rowNum = startRow + i;
+        const addr = `G${rowNum}`;
+        const cell = ws[addr] ?? {};
+        cell.t = "n";
+        cell.f = `SUM(H${rowNum}:AP${rowNum})`;
+        ws[addr] = cell;
+      }
+
+      // Dejar total de CONCEPTOS (fila totales) vacío en COMER (ej. AQ20)
+      const conceptosTotalAddr = "AQ20";
+      if (ws[conceptosTotalAddr]) {
+        ws[conceptosTotalAddr].t = "s";
+        ws[conceptosTotalAddr].v = "";
+      }
+
+      const suffix = formatMonthSuffix(dateFrom || dateTo);
+      const filename =
+        `COMER${suffix || new Date().toISOString().slice(5, 7) + new Date().getFullYear().toString().slice(-2)}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Error al exportar COMER: ${msg}`);
+    }
   };
 
   /* ---------- SSE event handler ---------- */
@@ -670,16 +1149,35 @@ export default function BotComprobantesPage() {
           }}
         >
           <h2>👥 Cuentas ({accounts.length})</h2>
-          <button
-            className="btn-sm btn-outline"
-            onClick={() => {
-              setShowImport((v) => !v);
-              setImportError("");
-            }}
-            disabled={running}
-          >
-            {showImport ? "Cerrar" : "📋 Importar JSON"}
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              className="btn-sm btn-outline"
+              onClick={() => {
+                setShowImport((v) => !v);
+                setImportError("");
+              }}
+              disabled={running}
+            >
+              {showImport ? "Cerrar" : "📋 Importar JSON"}
+            </button>
+            <button
+              className="btn-sm btn-outline"
+              onClick={() => {
+                setCsvImportError("");
+                csvFileInputRef.current?.click();
+              }}
+              disabled={running}
+            >
+              📥 Importar CSV
+            </button>
+            <input
+              ref={csvFileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              style={{ display: "none" }}
+              onChange={handleCsvInputChange}
+            />
+          </div>
         </div>
 
         {/* JSON Import Section */}
@@ -708,6 +1206,12 @@ export default function BotComprobantesPage() {
               </button>
             </div>
           </div>
+        )}
+
+        {csvImportError && (
+          <p className="bot-import-error" style={{ marginTop: "0.25rem" }}>
+            ⚠ {csvImportError}
+          </p>
         )}
 
         {/* Account rows */}
@@ -807,9 +1311,26 @@ export default function BotComprobantesPage() {
           </button>
         )}
         {tasks.length > 0 && !running && (
-          <button className="btn-sm btn-outline" onClick={exportResults}>
-            📥 Exportar resultados
-          </button>
+          <>
+            <button
+              className="btn-sm btn-outline"
+              onClick={exportResults}
+            >
+              📥 Exportar JSON
+            </button>
+            <button
+              className="btn-sm btn-outline"
+              onClick={exportVenerExcel}
+            >
+              📊 Exportar VENER (Emitidos)
+            </button>
+            <button
+              className="btn-sm btn-outline"
+              onClick={exportComerExcel}
+            >
+              📊 Exportar COMER (Recibidos)
+            </button>
+          </>
         )}
       </div>
 

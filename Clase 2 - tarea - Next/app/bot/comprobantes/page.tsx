@@ -97,7 +97,7 @@ async function sanitizeSheet1XmlInXlsxBuffer(
           (buffer as Buffer).byteOffset + (buffer as Buffer).byteLength,
         );
   const JSZip = (await import("jszip")).default;
-  const zip = await JSZip.loadAsync(arrayBuf);
+  const zip = await JSZip.loadAsync(arrayBuf as ArrayBuffer);
   const entry = zip.file(SHEET1_PATH);
   if (!entry) return arrayBuf;
   let xml = await entry.async("string");

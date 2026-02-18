@@ -11,8 +11,6 @@ export default function Home() {
         </div>
       </header>
 
-      <p className="thanks-tomacin">GRACIAS POR TU AYUDA TOMACIN!!!</p>
-
       <nav className="cards">
         <Link href="/parseos" className="card-link card-parseos">
           <span className="card-icon">📄</span>

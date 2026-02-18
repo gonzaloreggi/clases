@@ -89,15 +89,17 @@ const SHEET1_PATH = "xl/worksheets/sheet1.xml";
 async function sanitizeSheet1XmlInXlsxBuffer(
   buffer: ArrayBuffer | Buffer,
 ): Promise<ArrayBuffer> {
-  const arrayBuf =
+  const raw =
     buffer instanceof ArrayBuffer
       ? buffer
       : (buffer as Buffer).buffer.slice(
           (buffer as Buffer).byteOffset,
           (buffer as Buffer).byteOffset + (buffer as Buffer).byteLength,
         );
+  const arrayBuf: ArrayBuffer =
+    raw instanceof ArrayBuffer ? raw : new Uint8Array(raw).slice().buffer;
   const JSZip = (await import("jszip")).default;
-  const zip = await JSZip.loadAsync(arrayBuf as ArrayBuffer);
+  const zip = await JSZip.loadAsync(arrayBuf);
   const entry = zip.file(SHEET1_PATH);
   if (!entry) return arrayBuf;
   let xml = await entry.async("string");
@@ -421,7 +423,7 @@ function replaceFormulasWithValuesInRange(
       if (val != null && typeof val === "object") {
         const v = val as { sharedFormula?: string; formula?: string; result?: unknown };
         if (v.sharedFormula != null || v.formula != null) {
-          cell.value = v.result ?? null;
+          cell.value = (v.result ?? null) as ExcelJS.CellValue;
         }
       }
     }
@@ -440,7 +442,7 @@ function stripAllFormulasInSheet(sheet: ExcelJS.Worksheet): void {
         if (val != null && typeof val === "object") {
           const v = val as { sharedFormula?: string; formula?: string; result?: unknown };
           if (v.sharedFormula != null || v.formula != null) {
-            cell.value = v.result ?? null;
+            cell.value = (v.result ?? null) as ExcelJS.CellValue;
           }
         }
       } catch {
@@ -950,7 +952,7 @@ export default function BotComprobantesPage() {
           for (let c = 0; c < dataRows[r].length; c++) {
             const cell = sheet.getCell(startRow + r, c + 1);
             copyCellStyle(sheet.getCell(styleRow, c + 1), cell);
-            cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]);
+            cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]) as ExcelJS.CellValue;
           }
         }
         const sumEndCol = colLetter(lastHeaderCol);
@@ -1032,7 +1034,7 @@ export default function BotComprobantesPage() {
           for (let c = 0; c < (dataRows[r] as unknown[]).length; c++) {
             const cell = sheet.getCell(startRow + r, c + 1);
             copyCellStyle(sheet.getCell(styleRow, c + 1), cell);
-            cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]);
+            cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]) as ExcelJS.CellValue;
           }
         }
         for (let i = 0; i < N; i++) {

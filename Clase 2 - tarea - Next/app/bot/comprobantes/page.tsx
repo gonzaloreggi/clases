@@ -479,7 +479,7 @@ function ensureDataRowsBetween7And8(
   }
 }
 
-/** Fila TOTALES: combinar A–F "TOTALES" centrado + sumas. Misma lógica que VENTAS (usar en ambos). */
+/** Fila TOTALES: combinar A–F "TOTALES" centrado + sumas. Si N=1, TOTALES va en fila 9 (fila 8 queda como está). */
 function writeTotalesRow(
   sheet: ExcelJS.Worksheet,
   startRow: number,
@@ -488,7 +488,7 @@ function writeTotalesRow(
   opts?: { nullCol43?: boolean; mergeWithoutStyle?: boolean; skipMerge?: boolean },
 ): void {
   const lastDataRow = startRow + N - 1;
-  const totalesRow = startRow + N + 1;
+  const totalesRow = N === 1 ? startRow + 2 : startRow + N + 1;
   const totalesMergeRange = `A${totalesRow}:F${totalesRow}`;
   if (!opts?.skipMerge) {
     try {
@@ -907,11 +907,6 @@ export default function BotComprobantesPage() {
       if (t.status !== "success" && t.status !== "partial") continue;
       allEmitidos.push(...collectEmitidos(t.data));
     }
-    if (allEmitidos.length === 0) {
-      alert("No hay comprobantes emitidos para exportar.");
-      return;
-    }
-
     try {
       const res = await fetch("/templates/VENTAS_template.xlsx");
       if (!res.ok) throw new Error("No se pudo cargar la plantilla VENTAS.");
@@ -920,62 +915,52 @@ export default function BotComprobantesPage() {
       const sheet = wb.worksheets[0];
       if (!sheet) throw new Error("La plantilla VENTAS no tiene hojas.");
 
-      // Quitar todas las fórmulas de la hoja para evitar "Shared Formula master..." al escribir
-      stripAllFormulasInSheet(sheet);
-
-      const startRow = TEMPLATE_DATA_FIRST_ROW;
-      const lastHeaderCol =
-        Math.max(
-          getLastHeaderColumn(sheet, 4),
-          getLastHeaderColumn(sheet, 5),
-          getLastHeaderColumn(sheet, 6),
-        ) || 42;
-      const dataRows = buildVenerSheetRows(allEmitidos, lastHeaderCol);
-      const N = dataRows.length;
-      const styleRow = startRow;
-
-      // Replace all formulas with values in template rows 7–8 (use full column range so column L etc. are cleared)
-      replaceFormulasWithValuesInRange(sheet, startRow, startRow + TEMPLATE_USABLE_DATA_ROWS - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
-
-      // Insert (N-2) rows between 7 and 8 with same format as row 7. Do not touch anything else.
-      if (N > TEMPLATE_USABLE_DATA_ROWS) {
-        ensureDataRowsBetween7And8(sheet, N, lastHeaderCol, styleRow);
-      }
-
-      // Strip again after insert: copied rows (e.g. TOTALES) can still have shared formula refs from rDst.values = rSrc.values
-      stripAllFormulasInSheet(sheet);
-
-      // Replace formulas in data block (belt-and-braces) then clear and write
-      replaceFormulasWithValuesInRange(sheet, startRow, startRow + N - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
-
-      // Clear values in data rows (bottom-to-top)
-      for (let r = N - 1; r >= 0; r--) {
-        for (let c = 1; c <= lastHeaderCol; c++) {
-          const cell = sheet.getCell(startRow + r, c);
-          copyCellStyle(sheet.getCell(styleRow, c), cell);
-          cell.value = null;
-        }
-      }
-
-      // Write data only in rows 7..7+N-1 (format + value); sanitize strings to avoid XML error
-      for (let r = 0; r < N; r++) {
-        for (let c = 0; c < dataRows[r].length; c++) {
-          const cell = sheet.getCell(startRow + r, c + 1);
-          copyCellStyle(sheet.getCell(styleRow, c + 1), cell);
-          cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]);
-        }
-      }
-      const sumEndCol = colLetter(lastHeaderCol);
-      for (let i = 0; i < N; i++) {
-        const rowNum = startRow + i;
-        sheet.getCell(rowNum, 7).value = { formula: `SUM(H${rowNum}:${sumEndCol}${rowNum})` };
-      }
-
-      writeTotalesRow(sheet, startRow, N, lastHeaderCol);
-
       const suffix = formatMonthSuffix(dateFrom || dateTo);
       const filename =
         `VENTAS${suffix || new Date().toISOString().slice(5, 7) + new Date().getFullYear().toString().slice(-2)}.xlsx`;
+
+      if (allEmitidos.length > 0) {
+        stripAllFormulasInSheet(sheet);
+        const startRow = TEMPLATE_DATA_FIRST_ROW;
+        const lastHeaderCol =
+          Math.max(
+            getLastHeaderColumn(sheet, 4),
+            getLastHeaderColumn(sheet, 5),
+            getLastHeaderColumn(sheet, 6),
+          ) || 42;
+        const dataRows = buildVenerSheetRows(allEmitidos, lastHeaderCol);
+        const N = dataRows.length;
+        const styleRow = startRow;
+
+        replaceFormulasWithValuesInRange(sheet, startRow, startRow + TEMPLATE_USABLE_DATA_ROWS - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
+        if (N > TEMPLATE_USABLE_DATA_ROWS) {
+          ensureDataRowsBetween7And8(sheet, N, lastHeaderCol, styleRow);
+        }
+        stripAllFormulasInSheet(sheet);
+        if (N === 1) sheet.spliceRows(startRow + 1, 1);
+        replaceFormulasWithValuesInRange(sheet, startRow, startRow + N - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
+        for (let r = N - 1; r >= 0; r--) {
+          for (let c = 1; c <= lastHeaderCol; c++) {
+            const cell = sheet.getCell(startRow + r, c);
+            copyCellStyle(sheet.getCell(styleRow, c), cell);
+            cell.value = null;
+          }
+        }
+        for (let r = 0; r < N; r++) {
+          for (let c = 0; c < dataRows[r].length; c++) {
+            const cell = sheet.getCell(startRow + r, c + 1);
+            copyCellStyle(sheet.getCell(styleRow, c + 1), cell);
+            cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]);
+          }
+        }
+        const sumEndCol = colLetter(lastHeaderCol);
+        for (let i = 0; i < N; i++) {
+          const rowNum = startRow + i;
+          sheet.getCell(rowNum, 7).value = { formula: `SUM(H${rowNum}:${sumEndCol}${rowNum})` };
+        }
+        writeTotalesRow(sheet, startRow, N, lastHeaderCol);
+      }
+
       const buffer = await wb.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -999,11 +984,6 @@ export default function BotComprobantesPage() {
       if (t.status !== "success" && t.status !== "partial") continue;
       allRecibidos.push(...collectRecibidos(t.data));
     }
-    if (allRecibidos.length === 0) {
-      alert("No hay comprobantes recibidos para exportar.");
-      return;
-    }
-
     try {
       const res = await fetch("/templates/COMPRAS_template.xlsx");
       if (!res.ok) throw new Error("No se pudo cargar la plantilla COMPRAS.");
@@ -1014,57 +994,54 @@ export default function BotComprobantesPage() {
       const sheet = wb.worksheets[0];
       if (!sheet) throw new Error("La plantilla COMPRAS no tiene hojas.");
 
-      const b2 = sheet.getCell(2, 2);
-      if (typeof b2.value === "string") {
-        b2.value = sanitizeStringForXml(b2.value);
-      }
-      if (!b2.alignment) b2.alignment = {};
-      b2.alignment.wrapText = false;
-      b2.alignment.shrinkToFit = false;
-
-      stripAllFormulasInSheet(sheet);
-
-      const startRow = TEMPLATE_DATA_FIRST_ROW;
-      const COMPRAS_COLS = 43;
-      const dataRows = buildComerSheetRows(allRecibidos);
-      const N = dataRows.length;
-      const styleRow = startRow;
-
-      replaceFormulasWithValuesInRange(sheet, startRow, startRow + TEMPLATE_USABLE_DATA_ROWS - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
-
-      if (N > TEMPLATE_USABLE_DATA_ROWS) {
-        ensureDataRowsBetween7And8(sheet, N, COMPRAS_COLS, styleRow);
-      }
-
-      stripAllFormulasInSheet(sheet);
-
-      replaceFormulasWithValuesInRange(sheet, startRow, startRow + N - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
-
-      for (let r = N - 1; r >= 0; r--) {
-        for (let c = 1; c <= COMPRAS_COLS; c++) {
-          const cell = sheet.getCell(startRow + r, c);
-          copyCellStyle(sheet.getCell(styleRow, c), cell);
-          cell.value = null;
-        }
-      }
-
-      for (let r = 0; r < N; r++) {
-        for (let c = 0; c < (dataRows[r] as unknown[]).length; c++) {
-          const cell = sheet.getCell(startRow + r, c + 1);
-          copyCellStyle(sheet.getCell(styleRow, c + 1), cell);
-          cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]);
-        }
-      }
-      for (let i = 0; i < N; i++) {
-        const rowNum = startRow + i;
-        sheet.getCell(rowNum, 7).value = { formula: `SUM(H${rowNum}:AP${rowNum})` };
-      }
-
-      writeTotalesRow(sheet, startRow, N, 42, { nullCol43: true, mergeWithoutStyle: true });
-
       const suffix = formatMonthSuffix(dateFrom || dateTo);
       const filename =
         `COMPRAS${suffix || new Date().toISOString().slice(5, 7) + new Date().getFullYear().toString().slice(-2)}.xlsx`;
+
+      if (allRecibidos.length > 0) {
+        const b2 = sheet.getCell(2, 2);
+        if (typeof b2.value === "string") {
+          b2.value = sanitizeStringForXml(b2.value);
+        }
+        if (!b2.alignment) b2.alignment = {};
+        b2.alignment.wrapText = false;
+        b2.alignment.shrinkToFit = false;
+        stripAllFormulasInSheet(sheet);
+
+        const startRow = TEMPLATE_DATA_FIRST_ROW;
+        const COMPRAS_COLS = 43;
+        const dataRows = buildComerSheetRows(allRecibidos);
+        const N = dataRows.length;
+        const styleRow = startRow;
+
+        replaceFormulasWithValuesInRange(sheet, startRow, startRow + TEMPLATE_USABLE_DATA_ROWS - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
+        if (N > TEMPLATE_USABLE_DATA_ROWS) {
+          ensureDataRowsBetween7And8(sheet, N, COMPRAS_COLS, styleRow);
+        }
+        stripAllFormulasInSheet(sheet);
+        if (N === 1) sheet.spliceRows(startRow + 1, 1);
+        replaceFormulasWithValuesInRange(sheet, startRow, startRow + N - 1, MAX_COLS_FOR_REPLACE_FORMULAS);
+        for (let r = N - 1; r >= 0; r--) {
+          for (let c = 1; c <= COMPRAS_COLS; c++) {
+            const cell = sheet.getCell(startRow + r, c);
+            copyCellStyle(sheet.getCell(styleRow, c), cell);
+            cell.value = null;
+          }
+        }
+        for (let r = 0; r < N; r++) {
+          for (let c = 0; c < (dataRows[r] as unknown[]).length; c++) {
+            const cell = sheet.getCell(startRow + r, c + 1);
+            copyCellStyle(sheet.getCell(styleRow, c + 1), cell);
+            cell.value = sanitizeCellValueForXml((dataRows[r] as unknown[])[c]);
+          }
+        }
+        for (let i = 0; i < N; i++) {
+          const rowNum = startRow + i;
+          sheet.getCell(rowNum, 7).value = { formula: `SUM(H${rowNum}:AP${rowNum})` };
+        }
+        writeTotalesRow(sheet, startRow, N, 42, { nullCol43: true, mergeWithoutStyle: true });
+      }
+
       let buffer: ArrayBuffer | Buffer = await wb.xlsx.writeBuffer();
       buffer = await sanitizeSheet1XmlInXlsxBuffer(buffer);
       const blob = new Blob([buffer], {

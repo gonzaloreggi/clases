@@ -16,9 +16,9 @@ if '%errorlevel%' NEQ '0' (
 :gotAdmin
   cd /d "%~dp0"
   echo Iniciando servidor...
-  start "Servidor - Herramientas de parseo" cmd /k "npm run dev"
+  start "Servidor - Herramientas de parseo" /min cmd /k "npm run dev"
   timeout /t 5 /nobreak >nul
   start http://localhost:5173/
   echo.
-  echo Navegador abierto. Deja la ventana "Servidor" abierta mientras uses la app.
+  echo Navegador abierto. Deja la ventana "Servidor" abierta mientras uses la app. (puede quedar minimizada)
   timeout /t 3 /nobreak >nul

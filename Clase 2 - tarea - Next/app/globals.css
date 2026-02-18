@@ -117,6 +117,12 @@ body::after {
   gap: 0.75rem;
 }
 
+.cards-parseos {
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  max-width: 720px;
+  margin: 0 auto;
+}
+
 .card-link {
   display: block;
   background: rgba(255, 255, 255, 0.95);
@@ -161,6 +167,7 @@ body::after {
 .card-suss { border-left: 4px solid #95a595; }
 .card-arciba { border-left: 4px solid #5c7c5c; }
 .card-sicore { border-left: 4px solid #6b8e6b; }
+.card-parseos { border-left: 4px solid #40916c; }
 
 /* —— Tool pages —— */
 .tool-container {

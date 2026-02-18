@@ -16,10 +16,10 @@ if '%errorlevel%' NEQ '0' (
 :gotAdmin
   cd /d "%~dp0"
   echo Iniciando servidor Next.js...
-  start "Servidor - Herramientas de parseo" cmd /k "npm run dev"
+  start "Servidor - Herramientas de parseo" /min cmd /k "npm run dev"
   timeout /t 6 /nobreak >nul
   start http://localhost:3000/
   echo.
   echo Navegador abierto en http://localhost:3000
-  echo Deja la ventana "Servidor" abierta mientras uses la app.
+  echo Deja la ventana "Servidor" abierta mientras uses la app. (puede quedar minimizada)
   timeout /t 3 /nobreak >nul
